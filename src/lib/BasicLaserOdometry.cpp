@@ -635,6 +635,7 @@ void BasicLaserOdometry::process()
    Vector3 v(_transform.pos.x() - _imuShiftFromStart.x(),
              _transform.pos.y() - _imuShiftFromStart.y(),
              _transform.pos.z() * 1.05 - _imuShiftFromStart.z());
+   
    rotateZXY(v, rz, rx, ry);
    Vector3 trans = _transformSum.pos - v;
 

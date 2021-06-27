@@ -163,11 +163,16 @@ bool ScanRegistration::setupROS(ros::NodeHandle& node, ros::NodeHandle& privateN
 
 void ScanRegistration::handleIMUMessage(const sensor_msgs::Imu::ConstPtr& imuIn)
 {
+
+  //固定轴旋转，先旋转x,然后旋转y,最后旋转z轴。
+  //This will get the roll pitch and yaw from the matrix about fixed axes X, Y, Z respectively. That's R = Rz(yaw)*Ry(pitch)*Rx(roll).
+  //Here roll pitch yaw is in the global frame
   tf::Quaternion orientation;
   tf::quaternionMsgToTF(imuIn->orientation, orientation);
   double roll, pitch, yaw;
   tf::Matrix3x3(orientation).getRPY(roll, pitch, yaw);
 
+  //参考公式1
   Vector3 acc;
   acc.x() = float(imuIn->linear_acceleration.y - sin(roll) * cos(pitch) * 9.81);
   acc.y() = float(imuIn->linear_acceleration.z - cos(roll) * cos(pitch) * 9.81);
@@ -178,7 +183,7 @@ void ScanRegistration::handleIMUMessage(const sensor_msgs::Imu::ConstPtr& imuIn)
   newState.roll = roll;
   newState.pitch = pitch;
   newState.yaw = yaw;
-  newState.acceleration = acc;
+  newState.acceleration = acc;//实际的加速度在局部坐标系中的表示
 
   updateIMUData(acc, newState);
 }

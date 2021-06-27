@@ -38,6 +38,7 @@ void BasicScanRegistration::processScanlines(const Time& scanTime, std::vector<p
     IndexRange range(cloudSize, 0);
     cloudSize += laserCloudScans[i].size();
     range.second = cloudSize > 0 ? cloudSize - 1 : 0;
+	//每一个扫描线的点云的起点和终点的索引
     _scanIndices.push_back(range);
   }
 
@@ -103,10 +104,11 @@ void BasicScanRegistration::projectPointToStartOfSweep(pcl::PointXYZI& point, fl
   // project point to the start of the sweep using corresponding IMU data
   if (hasIMUData())
   {
-    setIMUTransformFor(relTime);
-    transformToStartIMU(point);
+      setIMUTransformFor(relTime);
+      transformToStartIMU(point);
   }
 }
+
 
 
 void BasicScanRegistration::setIMUTransformFor(const float& relTime)
@@ -138,14 +140,19 @@ void BasicScanRegistration::transformToStartIMU(pcl::PointXYZI& point)
 void BasicScanRegistration::interpolateIMUStateFor(const float &relTime, IMUState &outputState)
 {
   double timeDiff = toSec(_scanTime - _imuHistory[_imuIdx].stamp) + relTime;
+  //循环IMU的buffer，直到当前点云的时间小于某个IMU的时间，说明找到了最接近的那个IMU状态
   while (_imuIdx < _imuHistory.size() - 1 && timeDiff > 0) {
     _imuIdx++;
     timeDiff = toSec(_scanTime - _imuHistory[_imuIdx].stamp) + relTime;
   }
 
+  //如果第一个IMUbuffer中的状态时间就大于当前point的时间则去第一个。
+  //如果直到imu的buffer循环完毕，依然没有找到IMU的时间，大于当前point的时间，此时因该取最近的IMU状态
+  //疑问？当新来的一帧点云的时候，点云的顺序是否就是扫描的顺序？可以通过打印时间来看看？
   if (_imuIdx == 0 || timeDiff > 0) {
     outputState = _imuHistory[_imuIdx];
   } else {
+    //
     float ratio = -timeDiff / toSec(_imuHistory[_imuIdx].stamp - _imuHistory[_imuIdx - 1].stamp);
     IMUState::interpolate(_imuHistory[_imuIdx], _imuHistory[_imuIdx - 1], ratio, outputState);
   }
@@ -156,12 +163,15 @@ void BasicScanRegistration::extractFeatures(const uint16_t& beginIdx)
 {
   // extract features from individual scans
   size_t nScans = _scanIndices.size();
+  //轮询每一条线
   for (size_t i = beginIdx; i < nScans; i++) {
     pcl::PointCloud<pcl::PointXYZI>::Ptr surfPointsLessFlatScan(new pcl::PointCloud<pcl::PointXYZI>);
     size_t scanStartIdx = _scanIndices[i].first;
     size_t scanEndIdx = _scanIndices[i].second;
 
     // skip empty scans
+    //curvatureRegion的值等于5，因为在提取点云特征的时候，是使用前后5个点云数据。所以
+    //scanEndIdx在起始点的基础上，必须大于2被的curvatureRegion，才能进行特征提取的计算
     if (scanEndIdx <= scanStartIdx + 2 * _config.curvatureRegion) {
       continue;
     }
@@ -296,7 +306,7 @@ void BasicScanRegistration::setRegionBuffersFor(const size_t& startIdx, const si
     float diffX = pointWeight * _laserCloud[i].x;
     float diffY = pointWeight * _laserCloud[i].y;
     float diffZ = pointWeight * _laserCloud[i].z;
-
+    //曲率计算
     for (int j = 1; j <= _config.curvatureRegion; j++) {
       diffX += _laserCloud[i + j].x + _laserCloud[i - j].x;
       diffY += _laserCloud[i + j].y + _laserCloud[i - j].y;
@@ -322,7 +332,7 @@ void BasicScanRegistration::setScanBuffersFor(const size_t& startIdx, const size
 {
   // resize buffers
   size_t scanSize = endIdx - startIdx + 1;
-  _scanNeighborPicked.assign(scanSize, 0);
+  _scanNeighborPicked.assign(scanSize, 0);//一个扫描线中的数据的个数
 
   // mark unreliable points as picked
   for (size_t i = startIdx + _config.curvatureRegion; i < endIdx - _config.curvatureRegion; i++) {
@@ -330,6 +340,7 @@ void BasicScanRegistration::setScanBuffersFor(const size_t& startIdx, const size
     const pcl::PointXYZI& point = (_laserCloud[i]);
     const pcl::PointXYZI& nextPoint = (_laserCloud[i + 1]);
 
+    //当前点与下一个点的距离的平方
     float diffNext = calcSquaredDiff(nextPoint, point);
 
     if (diffNext > 0.1) {
