@@ -36,7 +36,7 @@ BasicLaserOdometry::BasicLaserOdometry(float scanPeriod, size_t maxIterations) :
 {}
 
 
-
+//参考公式2的伪公式
 void BasicLaserOdometry::transformToStart(const pcl::PointXYZI& pi, pcl::PointXYZI& po)
 {
    float s = (1.f / _scanPeriod) * (pi.intensity - int(pi.intensity));
@@ -203,6 +203,7 @@ void BasicLaserOdometry::process()
       _lastCornerKDTree.setInputCloud(_lastCornerCloud);
       _lastSurfaceKDTree.setInputCloud(_lastSurfaceCloud);
 
+     //Yaw角度和pos部分都未赋初值，即假设开始时刻的偏航角为0，位于global系下的原点位置
       _transformSum.rot_x += _imuPitchStart;
       _transformSum.rot_z += _imuRollStart;
 
@@ -215,6 +216,7 @@ void BasicLaserOdometry::process()
    Eigen::Matrix<float, 6, 6> matP;
 
    _frameCount++;
+   //个人猜测：假设相邻帧之间是匀速模型，所以首先减去非匀速运动产生的影响
    _transform.pos -= _imuVeloFromStart * _scanPeriod;
 
 
