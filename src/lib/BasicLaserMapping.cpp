@@ -99,10 +99,12 @@ BasicLaserMapping::BasicLaserMapping(const float& scanPeriod, const size_t& maxI
    _downSizeFilterSurf.setLeafSize(0.4, 0.4, 0.4);
 }
 
-
 void BasicLaserMapping::transformAssociateToMap()
 {
+   //里程计得到的相邻帧的差
    _transformIncre.pos = _transformBefMapped.pos - _transformSum.pos;
+   //相邻帧的差在当前时刻的lidar坐标系中的表示
+   //_transformIncre.pos为tkk-1
    rotateYXZ(_transformIncre.pos, -(_transformSum.rot_y), -(_transformSum.rot_x), -(_transformSum.rot_z));
 
    float sbcx = _transformSum.rot_x.sin();
@@ -126,6 +128,8 @@ void BasicLaserMapping::transformAssociateToMap()
    float salz = _transformAftMapped.rot_z.sin();
    float calz = _transformAftMapped.rot_z.cos();
 
+   //R_transformTobeMapped(yxz) = R_transformAftMapped*_transformBefMapped.transpose()*R_transformSum;
+   
    float srx = -sbcx * (salx*sblx + calx * cblx*salz*sblz + calx * calz*cblx*cblz)
       - cbcx * sbcy*(calx*calz*(cbly*sblz - cblz * sblx*sbly)
                      - calx * salz*(cbly*cblz + sblx * sbly*sblz) + cblx * salx*sbly)
@@ -161,8 +165,10 @@ void BasicLaserMapping::transformAssociateToMap()
    _transformTobeMapped.rot_z = atan2(srzcrx / _transformTobeMapped.rot_x.cos(),
                                       crzcrx / _transformTobeMapped.rot_x.cos());
 
+   //相邻帧的平移在世界坐标系中的表示
    Vector3 v = _transformIncre.pos;
    rotateZXY(v, _transformTobeMapped.rot_z, _transformTobeMapped.rot_x, _transformTobeMapped.rot_y);
+   //得到最新帧的平移量
    _transformTobeMapped.pos = _transformAftMapped.pos - v;
 }
 
@@ -210,9 +216,9 @@ void BasicLaserMapping::pointAssociateToMap(const pcl::PointXYZI& pi, pcl::Point
    po.y = pi.y;
    po.z = pi.z;
    po.intensity = pi.intensity;
-
+   //讲点转换到世界坐标系 po =Ryxz * po + t_xyz
    rotateZXY(po, _transformTobeMapped.rot_z, _transformTobeMapped.rot_x, _transformTobeMapped.rot_y);
-
+   //
    po.x += _transformTobeMapped.pos.x();
    po.y += _transformTobeMapped.pos.y();
    po.z += _transformTobeMapped.pos.z();
@@ -290,14 +296,14 @@ bool BasicLaserMapping::process(Time const& laserOdometryTime)
       pointAssociateToMap(pt, pointSel);
       _laserCloudSurfStack->push_back(pointSel);
    }
-
+   //左上前
    pcl::PointXYZI pointOnYAxis;
    pointOnYAxis.x = 0.0;
    pointOnYAxis.y = 10.0;
    pointOnYAxis.z = 0.0;
    pointAssociateToMap(pointOnYAxis, pointOnYAxis);
 
-   auto const CUBE_SIZE = 50.0;
+   auto const CUBE_SIZE = 50.0;//每一个cube的尺寸大小
    auto const CUBE_HALF = CUBE_SIZE / 2;
 
    int centerCubeI = int((_transformTobeMapped.pos.x() + CUBE_HALF) / CUBE_SIZE) + _laserCloudCenWidth;
@@ -321,6 +327,7 @@ bool BasicLaserMapping::process(Time const& laserOdometryTime)
                std::swap(_laserCloudCornerArray[indexA], _laserCloudCornerArray[indexB]);
                std::swap(_laserCloudSurfArray[indexA], _laserCloudSurfArray[indexB]);
             }
+			
             const size_t indexC = toIndex(0, j, k);
             _laserCloudCornerArray[indexC]->clear();
             _laserCloudSurfArray[indexC]->clear();
@@ -442,6 +449,7 @@ bool BasicLaserMapping::process(Time const& laserOdometryTime)
 
    _laserCloudValidInd.clear();
    _laserCloudSurroundInd.clear();
+   //5*5*5的范围
    for (int i = centerCubeI - 2; i <= centerCubeI + 2; i++)
    {
       for (int j = centerCubeJ - 2; j <= centerCubeJ + 2; j++)
@@ -500,6 +508,7 @@ bool BasicLaserMapping::process(Time const& laserOdometryTime)
    }
 
    // prepare valid map corner and surface cloud for pose optimization
+   //拿到地图中的点云数据
    _laserCloudCornerFromMap->clear();
    _laserCloudSurfFromMap->clear();
    for (auto const& ind : _laserCloudValidInd)
@@ -509,6 +518,7 @@ bool BasicLaserMapping::process(Time const& laserOdometryTime)
    }
 
    // prepare feature stack clouds for pose optimization
+   //把当前帧的点转回到lidar坐标系
    for (auto& pt : *_laserCloudCornerStack)
       pointAssociateTobeMapped(pt, pt);
 
@@ -666,19 +676,20 @@ void BasicLaserMapping::optimizeTransformTobeMapped()
       {
          pointOri = _laserCloudCornerStackDS->points[i];
          pointAssociateToMap(pointOri, pointSel);
+		 //从地图中，找到最近的5个点
          kdtreeCornerFromMap.nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
 
-         if (pointSearchSqDis[4] < 1.0)
+         if (pointSearchSqDis[4] < 1.0)//5个点中，最远的距离也在1m以内
          {
             Vector3 vc(0, 0, 0);
-
+            //5个点的均值
             for (int j = 0; j < 5; j++)
                vc += Vector3(_laserCloudCornerFromMap->points[pointSearchInd[j]]);
             vc /= 5.0;
 
             Eigen::Matrix3f mat_a;
             mat_a.setZero();
-
+            //5个点的协方差矩阵
             for (int j = 0; j < 5; j++)
             {
                Vector3 a = Vector3(_laserCloudCornerFromMap->points[pointSearchInd[j]]) - vc;
@@ -693,19 +704,21 @@ void BasicLaserMapping::optimizeTransformTobeMapped()
             matA1 = mat_a / 5.0;
             // This solver only looks at the lower-triangular part of matA1.
             Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> esolver(matA1);
-            matD1 = esolver.eigenvalues().real();
+            matD1 = esolver.eigenvalues().real();//特征值，Eigen中的eigenvalues函数返回的特征值是从小到大排列
             matV1 = esolver.eigenvectors().real();
-
-            if (matD1(0, 2) > 3 * matD1(0, 1))
+           
+            if (matD1(0, 2) > 3 * matD1(0, 1))//最大的特征值，大于次大的特征值三倍以上。说明点是线性的
             {
 
                float x0 = pointSel.x;
                float y0 = pointSel.y;
                float z0 = pointSel.z;
+			   
                float x1 = vc.x() + 0.1 * matV1(0, 2);
                float y1 = vc.y() + 0.1 * matV1(1, 2);
                float z1 = vc.z() + 0.1 * matV1(2, 2);
-               float x2 = vc.x() - 0.1 * matV1(0, 2);
+
+			   float x2 = vc.x() - 0.1 * matV1(0, 2);
                float y2 = vc.y() - 0.1 * matV1(1, 2);
                float z2 = vc.z() - 0.1 * matV1(2, 2);
 
@@ -715,6 +728,8 @@ void BasicLaserMapping::optimizeTransformTobeMapped()
                                  * ((x0 - x1)*(z0 - z2) - (x0 - x2)*(z0 - z1))
                                  + ((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1))
                                  * ((y0 - y1)*(z0 - z2) - (y0 - y2)*(z0 - z1)));
+
+
 
                float l12 = sqrt((x1 - x2)*(x1 - x2) + (y1 - y2)*(y1 - y2) + (z1 - z2)*(z1 - z2));
 
@@ -765,6 +780,7 @@ void BasicLaserMapping::optimizeTransformTobeMapped()
                matA0(j, 1) = _laserCloudSurfFromMap->points[pointSearchInd[j]].y;
                matA0(j, 2) = _laserCloudSurfFromMap->points[pointSearchInd[j]].z;
             }
+			//平面方程
             matX0 = matA0.colPivHouseholderQr().solve(matB0);
 
             float pa = matX0(0, 0);
@@ -778,6 +794,7 @@ void BasicLaserMapping::optimizeTransformTobeMapped()
             pc /= ps;
             pd /= ps;
 
+			//点到平面的距离
             bool planeValid = true;
             for (int j = 0; j < 5; j++)
             {

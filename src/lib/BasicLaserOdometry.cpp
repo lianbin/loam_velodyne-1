@@ -64,6 +64,7 @@ size_t BasicLaserOdometry::transformToEnd(pcl::PointCloud<pcl::PointXYZI>::Ptr& 
 
       float s = (1.f / _scanPeriod) * (point.intensity - int(point.intensity));
 
+      //先旋转到起始点
       point.x -= s * _transform.pos.x();
       point.y -= s * _transform.pos.y();
       point.z -= s * _transform.pos.z();
@@ -73,12 +74,15 @@ size_t BasicLaserOdometry::transformToEnd(pcl::PointCloud<pcl::PointXYZI>::Ptr& 
       Angle ry = -s * _transform.rot_y.rad();
       Angle rz = -s * _transform.rot_z.rad();
       rotateZXY(point, rz, rx, ry);
+
+	  //然后使用求取得transpose直接旋转到lidar扫描的结束位置
       rotateYXZ(point, _transform.rot_y, _transform.rot_x, _transform.rot_z);
 
+	  //减去由于非匀速运动导致的运动畸变
       point.x += _transform.pos.x() - _imuShiftFromStart.x();
       point.y += _transform.pos.y() - _imuShiftFromStart.y();
       point.z += _transform.pos.z() - _imuShiftFromStart.z();
-
+      
       rotateZXY(point, _imuRollStart, _imuPitchStart, _imuYawStart);
       rotateYXZ(point, -_imuYawEnd, -_imuPitchEnd, -_imuRollEnd);
    }
@@ -87,7 +91,7 @@ size_t BasicLaserOdometry::transformToEnd(pcl::PointCloud<pcl::PointXYZI>::Ptr& 
 }
 
 
-
+//Rsum(yxz)* (Rws(yxz).transpose()*Rwe(yxz))
 void BasicLaserOdometry::pluginIMURotation(const Angle& bcx, const Angle& bcy, const Angle& bcz,
                                            const Angle& blx, const Angle& bly, const Angle& blz,
                                            const Angle& alx, const Angle& aly, const Angle& alz,
@@ -152,6 +156,7 @@ void BasicLaserOdometry::pluginIMURotation(const Angle& bcx, const Angle& bcy, c
 
 
 
+//R0k+1(yxz)=R0k(yxz)*Rkk+1(yxz)  
 void BasicLaserOdometry::accumulateRotation(Angle cx, Angle cy, Angle cz,
                                             Angle lx, Angle ly, Angle lz,
                                             Angle &ox, Angle &oy, Angle &oz)
@@ -633,13 +638,14 @@ void BasicLaserOdometry::process()
                       -_transform.rot_y.rad() * 1.05,
                       -_transform.rot_z,
                       rx, ry, rz);
-
+   
    Vector3 v(_transform.pos.x() - _imuShiftFromStart.x(),
              _transform.pos.y() - _imuShiftFromStart.y(),
              _transform.pos.z() * 1.05 - _imuShiftFromStart.z());
-   
-   rotateZXY(v, rz, rx, ry);
-   Vector3 trans = _transformSum.pos - v;
+
+    		 
+   rotateZXY(v, rz, rx, ry);//得到的是v是tk+1k，平移量在世界坐标系中的表示
+   Vector3 trans = _transformSum.pos - v;//得到t0k+1的平移量
 
    pluginIMURotation(rx, ry, rz,
                      _imuPitchStart, _imuYawStart, _imuRollStart,

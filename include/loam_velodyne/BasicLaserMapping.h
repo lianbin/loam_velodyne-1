@@ -169,9 +169,9 @@ private:
    std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> _laserCloudCornerDSArray;  ///< down sampled
    std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> _laserCloudSurfDSArray;    ///< down sampled
 
-   std::vector<size_t> _laserCloudValidInd;
-   std::vector<size_t> _laserCloudSurroundInd;
-
+   std::vector<size_t> _laserCloudValidInd;//在FOV中的cube
+   std::vector<size_t> _laserCloudSurroundInd;//周围素有的cube
+   //_transformSum-最新帧的里程计位姿              transformIncre-相邻帧的差       _transformBefMapped-上一时刻的里程计累计位姿
    Twist _transformSum, _transformIncre, _transformTobeMapped, _transformBefMapped, _transformAftMapped;
 
    CircularBuffer<IMUState2> _imuHistory;    ///< history of IMU states

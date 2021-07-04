@@ -200,6 +200,12 @@ void LaserMapping::laserCloudFullResHandler(const sensor_msgs::PointCloud2ConstP
    pcl::fromROSMsg(*laserCloudFullResMsg, laserCloud());
    _newLaserCloudFullRes = true;
 }
+/*
+_laserOdometryMsg.pose.pose.orientation.x = -geoQuat.y;
+_laserOdometryMsg.pose.pose.orientation.y = -geoQuat.z;
+_laserOdometryMsg.pose.pose.orientation.z = geoQuat.x;
+_laserOdometryMsg.pose.pose.orientation.w = geoQuat.w;
+*/
 
 void LaserMapping::laserOdometryHandler(const nav_msgs::Odometry::ConstPtr& laserOdometry)
 {

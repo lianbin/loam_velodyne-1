@@ -96,6 +96,7 @@ namespace loam
     std::vector<int> _pointSearchSurfInd2;    ///< second surface point search index buffer
     std::vector<int> _pointSearchSurfInd3;    ///< third surface point search index buffer
 
+	//_transform是从k+1到k的变换
     Twist _transform;     ///< optimized pose transformation
     Twist _transformSum;  ///< accumulated optimized pose transformation
 
